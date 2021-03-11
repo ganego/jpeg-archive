@@ -1,17 +1,47 @@
+# It does not compile with the Visual Studio 2019 image
+image: Visual Studio 2017
 version: '{build}'
-environment:
-  CC: gcc
+
+# Always save mozjpeg & nasm cache
+init:
+- ps: $env:APPVEYOR_SAVE_CACHE_ON_ERROR = "true"
+
+cache:
+  - C:\projects\mozjpeg
+  - C:\projects\nasm-2.14.02
+  
 install:
-- cinst mingw
+# MSYS2 path
+- set PATH=C:\msys64\mingw64\bin;%PATH%
+- gcc --version
 - cd %APPVEYOR_BUILD_FOLDER%\..
-- mkdir mozjpeg
-- cd mozjpeg
-- appveyor DownloadFile https://www.dropbox.com/s/b551b2a1qle5urf/mozjpeg.zip?dl=1
-- 7z e mozjpeg.zip -y > extract.log
+- dir
+#
+# Install NASM if it does not exist
+- ps: if (!(Test-Path -Path "C:\projects\nasm-2.14.02" )) {
+        (new-object System.Net.WebClient).DownloadFile(
+          'https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/win64/nasm-2.14.02-win64.zip',
+          'nasm-2.14.02-win64.zip'
+        );
+        7z x -y nasm-2.14.02-win64.zip;
+      }
+      {
+      echo nasm exists already
+      }
+- set PATH=%PATH%;C:\projects\nasm-2.14.02
+#
+# Compile mozjpeg without PNG (don't need it and we'd have to install libpng) - Output will be cached for later runs
+- ps: if (!(Test-Path -Path "C:\projects\mozjpeg" )) {
+        git clone https://github.com/mozilla/mozjpeg.git;
+        cd mozjpeg;
+        cmake -G "MSYS Makefiles" -D CMAKE_C_COMPILER=gcc.exe -D CMAKE_MAKE_PROGRAM=mingw32-make.exe -D WITH_JPEG8=1 -D PNG_SUPPORTED=NO;
+        mingw32-make;
+      } 
+      {
+      echo mozjpeg exists already
+      }
 build_script:
 - cd %APPVEYOR_BUILD_FOLDER%
-- cd
-- set PATH=%PATH%;C:\tools\mingw64\bin
 - mingw32-make
 after_build:
 - 7z a jpeg-archive.zip %APPVEYOR_BUILD_FOLDER%\*.exe
